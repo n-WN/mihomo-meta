@@ -43,7 +43,6 @@ func HandleConn(c net.Conn, tunnel C.Tunnel, store auth.AuthStore, additions ...
 
 	authenticator := store.Authenticator()
 	keepAlive := true
-	trusted := authenticator == nil // disable authenticate if lru is nil
 	lastUser := ""
 
 	for keepAlive {
@@ -62,7 +61,17 @@ func HandleConn(c net.Conn, tunnel C.Tunnel, store auth.AuthStore, additions ...
 
 		var user string
 		resp, user = authenticate(request, authenticator) // always call authenticate function to get user
-		trusted = trusted || resp == nil
+		
+		// Evaluate trust per request instead of persisting state across requests
+		// This fixes the privilege escalation vulnerability where trusted state 
+		// persisted across keep-alive requests without re-authentication
+		var trusted bool
+		if authenticator == nil {
+			trusted = true // No authenticator configured, always trust
+		} else {
+			trusted = resp == nil // Trust only if this request authenticated successfully
+		}
+		
 		additions[inUserIdx] = inbound.WithInUser(user)
 
 		if trusted {

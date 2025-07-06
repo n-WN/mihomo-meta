@@ -3,3 +3,4 @@ venv
 build
 mihomo.egg-info
 *.ipynb
+test_security.py

@@ -1,3 +1,5 @@
+import posixpath
+import re
 from typing import Final, TypeVar
 
 from .models import Character, StarrailInfoParsed
@@ -48,9 +50,59 @@ def replace_icon_name_with_url(data: RawData) -> RawData:
         for i in range(len(data)):
             data[i] = replace_icon_name_with_url(data[i])
     elif isinstance(data, str):
-        if ".png" in data:
+        if ".png" in data and _is_safe_icon_path(data):
             data = ASSET_URL + "/" + data
     return data
+
+
+def _is_safe_icon_path(path: str) -> bool:
+    """
+    Validates that an icon path is safe and doesn't contain path traversal attempts.
+    
+    Args:
+        - path (`str`): The icon path to validate.
+        
+    Returns:
+        - `bool`: True if the path is safe, False otherwise.
+    """
+    # Reject empty strings or just ".png"
+    if not path or path == ".png":
+        return False
+    
+    # Reject paths that contain protocol schemes (http://, https://, ftp://, etc.)
+    if "://" in path:
+        return False
+    
+    # Reject paths with protocol-relative URLs
+    if path.startswith("//"):
+        return False
+    
+    # Normalize the path and check for path traversal attempts
+    normalized = posixpath.normpath(path)
+    
+    # Reject paths that try to traverse up directories
+    if normalized.startswith("../") or "/../" in normalized or normalized == "..":
+        return False
+    
+    # Remove leading slash for relative path processing
+    if normalized.startswith("/"):
+        normalized = normalized[1:]
+    
+    # Reject if normalization resulted in empty string
+    if not normalized:
+        return False
+    
+    # Ensure the path only contains safe characters for asset paths
+    # Allow alphanumeric, slash, dot, dash, underscore
+    if not re.match(r'^[a-zA-Z0-9/_.-]+$', normalized):
+        return False
+    
+    # Must contain at least one directory separator or be a simple filename
+    # and should not be just a file extension
+    if not ("/" in normalized or normalized.count(".") <= 1):
+        return False
+    
+    return True
 
 
 def replace_trailblazer_name(data: StarrailInfoParsedV1) -> StarrailInfoParsedV1:
